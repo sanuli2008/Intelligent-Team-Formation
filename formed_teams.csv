@@ -1,0 +1,19 @@
+TeamID,ID,Name,Email,PreferredGame,SkillLevel,PreferredRole,PersonalityScore,PersonalityType
+1,S014,SampleUser_14,sample14@mail.com,FIFA,5,Coordinator,67,Leader
+1,S010,SampleUser_10,sample10@mail.com,Basketball,10,Supporter,70,Thinker
+1,S019,SampleUser_19,sample19@mail.com,Basketball,10,Strategist,70,Thinker
+2,S016,SampleUser_16,sample16@mail.com,Valorant,5,Strategist,65,Leader
+2,S005,SampleUser_5,sample5@mail.com,Basketball,8,Coordinator,99,Balanced
+2,S015,SampleUser_15,sample15@mail.com,Chess,7,Coordinator,61,Balanced
+3,S008,SampleUser_8,sample8@mail.com,Chess,9,Defender,85,Leader
+3,S003,SampleUser_3,sample3@mail.com,CS:GO,4,Strategist,55,Thinker
+3,S011,SampleUser_11,sample11@mail.com,Chess,4,Strategist,64,Balanced
+4,S017,SampleUser_17,sample17@mail.com,DOTA 2,3,Strategist,80,Leader
+4,S012,SampleUser_12,sample12@mail.com,Basketball,2,Coordinator,72,Thinker
+4,S002,SampleUser_2,sample2@mail.com,Valorant,4,Attacker,90,Balanced
+5,S001,SampleUser_1,sample1@mail.com,Valorant,9,Attacker,99,Leader
+5,S007,SampleUser_7,sample7@mail.com,Basketball,8,Defender,67,Thinker
+5,S004,SampleUser_4,sample4@mail.com,Chess,4,Coordinator,76,Balanced
+6,S018,SampleUser_18,sample18@mail.com,DOTA 2,1,Coordinator,74,Leader
+6,S020,SampleUser_20,sample20@mail.com,FIFA,9,Supporter,100,Thinker
+6,S006,SampleUser_6,sample6@mail.com,CS:GO,3,Supporter,93,Balanced
