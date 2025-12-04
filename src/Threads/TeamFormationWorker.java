@@ -9,14 +9,13 @@ import java.util.List;
 /**
  * TeamFormationWorker - runnable wrapper for TeamBuilder
  */
-public class TeamFormationWorker implements Runnable {
-    private final List<Participant> candidates;
+public class TeamFormationWorker extends TaskBase {
     private final int teamSize;
     private final int startId;
     private TeamBuilder builder;
 
-    public TeamFormationWorker(List<Participant> candidates, int teamSize, int startId1) {
-        this.candidates = candidates;
+    public TeamFormationWorker(List<Participant> participants, int teamSize, int startId1) {
+        super(participants);
         this.teamSize = teamSize;
         this.startId = startId1;
     }
@@ -24,7 +23,8 @@ public class TeamFormationWorker implements Runnable {
     @Override
     public void run() {
         System.out.println("[TeamFormationWorker] Starting formation...");
-        builder = new TeamBuilder(candidates, teamSize, startId);
+        // Use 'participants' (inherited field) instead of 'candidates'
+        builder = new TeamBuilder(participants, teamSize, startId);
         builder.formTeams();
         System.out.println("[TeamFormationWorker] Formation done.");
     }
