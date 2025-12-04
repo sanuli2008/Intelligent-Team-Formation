@@ -1,322 +1,336 @@
 package UI;
 
-// ui/OrganizerUI.java
+import Logic.FileManager;
+import Logic.PersonalityClassifier;
+import Threads.SurveyProcessor;
+import Threads.TeamFormationWorker;
+import Model.Participant;
+import Model.Team;
+
+import java.io.File;
 import java.util.*;
-import java.io.*;
-import Logic.*;
-import Model.*;
-import Interfaces.OrganizerInterface;
+import java.util.logging.Logger;
 
+public class OrganizerUI {
+    private static final Logger LOGGER = Logger.getLogger(OrganizerUI.class.getName());
+    private final Scanner sc = new Scanner(System.in);
+    private final FileManager fm = new FileManager();
+    private final PersonalityClassifier classifier = new PersonalityClassifier();
 
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.*;
-import java.util.stream.Collectors;
+    private Map<String, Participant> masterMap = new LinkedHashMap<>();
+    private List<Participant> preparedCandidates = new ArrayList<>();
+    private String lastUploadedFilePath = null;
+    private List<Participant> lastUploadedRows = null;
+    private List<Team> currentTeams = new ArrayList<>();
+    private List<Participant> currentLeftovers = new ArrayList<>();
 
-public class OrganizerUI implements OrganizerInterface {
+    private static final String SAMPLE_UPLOADED_PATH = "src/all_participants.csv";
 
-    private String csvFile = "src/participants_sample.csv";
-    private List<Participant> participants = new ArrayList<>();
-    private List<Participant> invalidParticipants = new ArrayList<>();
-    private final FileManager fileManager = new FileManager();
-    private TeamBuilder builder;
+    public OrganizerUI() {
+        fm.ensureMasterExists();
+        masterMap = fm.readMasterMap();
+    }
 
-    @Override
-    public void uploadCSV() {
-        Scanner sc = new Scanner(System.in);
-        System.out.print("Enter CSV path (leave empty for members.csv): ");
-        String path = sc.nextLine().trim();
-        if (!path.isEmpty()) csvFile = path;
-        Map<String, List<Participant>> map = fileManager.loadCSVWithValidation(csvFile);
-        participants = map.getOrDefault("valid", new ArrayList<>());
-        invalidParticipants = map.getOrDefault("invalid", new ArrayList<>());
+    public void organizerMenu() {
+        while (true) {
+            System.out.println("\n--- Organizer Menu ---");
+            System.out.println("1) Load master to form teams with unassigned participants");
+            System.out.println("2) Upload participants CSV and prepare candidates");
+            System.out.println("3) Form teams");
+            System.out.println("4) View formed teams");
+            System.out.println("5) Export formed teams");
+            System.out.println("6) Search participant in master");
+            System.out.println("7) Reset Tournament (Clear Assignments)");
+            System.out.println("8) Back to main menu");
+            System.out.print("Choice: ");
+            String c = sc.nextLine().trim();
 
-        System.out.println("Loaded valid participants: " + participants.size());
-        if (!invalidParticipants.isEmpty()) {
-            System.out.println("Invalid rows detected (missing required fields): " + invalidParticipants.size());
-            for (Participant p : invalidParticipants) {
-                System.out.println(" - Invalid row (ID may be empty): " + p.getName() + " | email: " + p.getEmail());
+            switch (c) {
+                case "1": loadMaster(); break;
+                case "2": uploadAndPrepare(); break;
+                case "3": formTeams(); break;
+                case "4": viewTeams(); break;
+                case "5": exportFormedTeams(); break;
+                case "6": searchParticipant(); break;
+                case "7": resetTournament(); break;
+                case "8": return;
+                default: System.out.println("Enter a number 1..7.");
             }
-            System.out.println("Invalid rows will be ignored for team formation.");
         }
     }
 
-    @Override
-    public void formTeams() {
-        if (participants == null || participants.isEmpty()) {
-            System.out.println("No valid participants loaded. Upload CSV first.");
+    //to form teams with unassigned participants using master file
+    private void loadMaster() {
+        fm.ensureMasterExists();
+        masterMap = fm.readMasterMap();
+        System.out.println("Master loaded. Participants: " + masterMap.size());
+    }
+
+    //to upload an external file
+    private void uploadAndPrepare() {
+        System.out.print("Enter CSV path to upload: ");
+        String path = sc.nextLine().trim();
+        if (path.isEmpty()) path = SAMPLE_UPLOADED_PATH;
+
+        File f = new File(path);
+        if (!f.exists()) {
+            System.out.println("File not found.");
             return;
         }
-        Scanner sc = new Scanner(System.in);
-        int teamSize = 0;
+
+        masterMap = fm.readMasterMap();
+
+        try {
+            //to prevent uploading already uploaded file
+            List<Participant> validCandidates = fm.importCandidates(path, masterMap);
+
+            if (validCandidates.isEmpty()) {
+                System.out.println("No new candidates found (all duplicates or invalid).");
+                return;
+            }
+
+            lastUploadedFilePath = path;
+            lastUploadedRows = validCandidates;
+            preparedCandidates = new ArrayList<>(validCandidates);
+            LOGGER.info("User uploaded file: " + path + ". Valid candidates: " + validCandidates.size());
+            System.out.println("Prepared " + preparedCandidates.size() + " NEW candidate(s).");
+
+
+        } catch (Exceptions.InvalidDataException e) {
+            System.out.println("[Error] Import failed: " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("[Error] Unexpected error: " + e.getMessage());
+        }
+    }
+
+    //form teams with valid participants
+    private void formTeams() {
+        List<Participant> source = new ArrayList<>();
+
+        if (!preparedCandidates.isEmpty()) {
+            source.addAll(preparedCandidates);
+            System.out.println("Forming teams from prepared candidates (" + source.size() + ").");
+        } else {
+            for (Participant p : masterMap.values()) {
+                if (p.getAssigned() == null || !p.getAssigned().toLowerCase().startsWith("team-")) {
+                    source.add(p);
+                }
+            }
+            System.out.println("No prepared upload. Forming teams from all unassigned participants in master (" + source.size() + ").");
+        }
+
+        if (source.size() < 3) {
+            System.out.println("Not enough participants to form teams.");
+            return;
+        }
+
+        //team size should only be within 3 to 10,to form properly distributed teams
+        int teamSize;
         while (true) {
-            System.out.print("Enter desired team size (N): ");
+            System.out.print("Enter desired team size (3..10): ");
             try {
                 teamSize = Integer.parseInt(sc.nextLine().trim());
-                if (teamSize >= 2) break;
-                System.out.println("Enter an integer >= 2.");
-            } catch (Exception e) {
-                System.out.println("Enter a valid integer.");
-            }
+                LOGGER.info("Team formation initiated for team size: " + teamSize);
+                if (teamSize >= 3 && teamSize <= 10) break;
+            } catch (Exception ignored) {}
+            System.out.println("Please enter a valid integer between 3 and 10.");
         }
 
-        // Ensure each participant has an ID; if some missing, generate and set (rare)
-        for (Participant p : participants) {
-            if (p.getId() == null || p.getId().isEmpty()) {
-                String nid = fileManager.getNextID(csvFile);
-                p.setId(nid);
-            }
+        int startId = calculateNextTeamId();
+        //using threads to perform tasks parallelly.
+        SurveyProcessor sp = new SurveyProcessor(source, classifier);
+        TeamFormationWorker tfw = new TeamFormationWorker(source, teamSize, startId);
+
+        Thread t1 = new Thread(sp, "SurveyProcessor");
+        Thread t2 = new Thread(tfw, "TeamFormationWorker");
+
+        t1.start();
+        try { Thread.sleep(20); } catch (InterruptedException ignored) {}
+        t2.start();
+
+        try {
+            t1.join();
+            t2.join();
+
+        } catch (InterruptedException e) {
+            System.out.println("Operation interrupted: " + e.getMessage());
         }
 
-        builder = new TeamBuilder(teamSize, participants);
-        builder.formTeams();
-
-        // update participants' Assigned fields in participants list (builder does this on Participant objects)
-        // overwrite members.csv with all participants (including invalid ones: keep them but mark Unassigned)
-        // combine valid + invalid into a single list to write back: for invalid we keep original values and Assigned = Unassigned
-        List<Participant> allForWrite = new ArrayList<>();
-        allForWrite.addAll(participants); // valid participants now have Assigned possibly set
-        // set invalid participants assigned = Unassigned
-        for (Participant p : invalidParticipants) p.setAssigned("Unassigned");
-        allForWrite.addAll(invalidParticipants);
-
-        // overwrite members.csv
-        fileManager.overwriteMembersCSV(csvFile, allForWrite);
-
-        // save formed teams file
-        fileManager.saveTeamsCSV(builder.getTeams(), "formed_teams.csv");
-
-        System.out.println("Teams formed and saved. You can view teams or search.");
+        currentTeams = tfw.getTeams();
+        LOGGER.info("Team formation completed. Teams: " + currentTeams.size());
+        currentLeftovers = tfw.getLeftovers();
+        System.out.println("Teams formed in memory: " + currentTeams.size() + " | Leftovers: " + currentLeftovers.size());
     }
 
-    @Override
-    public void viewResults() {
-        if (builder == null || builder.getTeams().isEmpty()) {
-            System.out.println("No teams formed yet. Run formTeams first.");
+    // export teams to make sure they are stored
+    // unless formed teams would be disappeared since they are stored in memory
+    private void exportFormedTeams() {
+        if (currentTeams == null || currentTeams.isEmpty()) {
+            System.out.println("No teams to export. Please form teams first (option 3).");
             return;
         }
-        builder.displayAllTeams();
-    }
 
-    @Override
-    public void searchMember(String query) {
-        if (participants == null || participants.isEmpty()) {
-            System.out.println("No participants loaded. Upload CSV first.");
-            return;
+        if (lastUploadedRows != null && !lastUploadedRows.isEmpty()) {
+            masterMap = fm.mergeUploadedIntoMasterAtExport(lastUploadedRows);
+        } else {
+            masterMap = fm.readMasterMap();
         }
-        String q = query.trim().toLowerCase();
-        boolean found = false;
-        for (Participant p : participants) {
-            if ((p.getId() != null && p.getId().toLowerCase().contains(q))
-                    || p.getName().toLowerCase().contains(q)
-                    || p.getEmail().toLowerCase().contains(q)) {
-                System.out.println("Found: " + p.getId() + " | " + p.getName() + " | Assigned: " + p.getAssigned());
-                found = true;
+
+        // Remove empty teams ONLY. Do NOT re-index/renumber them.
+        List<Team> nonEmptyTeams = new ArrayList<>();
+        for (Team t : currentTeams) {
+            if (t.size() > 0) {
+                nonEmptyTeams.add(t);
             }
         }
-        if (!found) System.out.println("No matching participant found for: " + query);
-    }
+        currentTeams = nonEmptyTeams;
 
-    @Override
-    public void searchTeam(String teamId) {
-        if (builder == null || builder.getTeams().isEmpty()) {
-            System.out.println("No teams formed yet.");
-            return;
-        }
-        String q = teamId.trim().toLowerCase();
-        boolean found = false;
-        for (Team t : builder.getTeams()) {
-            String tid = "team-" + t.getTeamID();
-            if (tid.equalsIgnoreCase(q) || String.valueOf(t.getTeamID()).equals(q)) {
-                System.out.println("Members of " + tid + ":");
-                for (Participant p : t.getMembers()) {
-                    System.out.println(" - " + p.getId() + " | " + p.getName() + " | " + p.getRole() + " | " + p.getGame());
+        // Apply assignments
+        // Now, t.getTeamID() will retain the correct ID (e.g., 6, 7) from the Builder
+        for (Team t : currentTeams) {
+            for (Participant member : t.getMembers()) {
+                Participant orig = masterMap.get(member.getId());
+
+                String teamName = "Team-" + t.getTeamID(); // Uses correct ID
+
+                if (orig != null) {
+                    orig.setAssigned(teamName);
+                } else {
+                    member.setAssigned(teamName);
+                    masterMap.put(member.getId(), member);
                 }
-                found = true;
-                break;
             }
         }
-        if (!found) System.out.println("Team not found: " + teamId);
+
+        for (Participant p : currentLeftovers) {
+            if (!masterMap.containsKey(p.getId())) masterMap.put(p.getId(), p);
+            else masterMap.get(p.getId()).setAssigned("Unassigned");
+        }
+
+        fm.writeMasterFromMap(masterMap);
+
+        if (lastUploadedFilePath != null && lastUploadedRows != null) {
+            fm.updateUploadedFileWithAssignments(lastUploadedFilePath, lastUploadedRows, masterMap);
+        }
+
+        String fname = fm.exportTeams(currentTeams, "formed_teams");
+        if (fname != null) {
+            System.out.println("Export successful: " + fname);
+            LOGGER.info("Teams exported successfully to file: " + fname);
+        } else {
+            LOGGER.warning("Team export failed.");
+            System.out.println("Export failed.");
+        }
+
+        // Clean up
+        preparedCandidates.clear();
+        lastUploadedFilePath = null;
+        lastUploadedRows = null;
+        currentLeftovers.clear();
+        currentTeams.clear();
+    }
+
+    private void viewTeams() {
+        if (currentTeams == null || currentTeams.isEmpty()) {
+            System.out.println("No teams in memory.");
+            return;
+        }
+        for (Team t : currentTeams) t.displayTeam();
+    }
+
+    //search for partciapnts
+    private void searchParticipant() {
+        System.out.print("Enter ID or Name or Email to search: ");
+        String q = sc.nextLine().trim().toLowerCase();
+
+        masterMap = fm.readMasterMap();
+
+        List<Participant> matches = new ArrayList<>();
+        for (Participant p : masterMap.values()) {
+            boolean matchId = (p.getId() != null && p.getId().toLowerCase().contains(q));
+            boolean matchName = (p.getName() != null && p.getName().toLowerCase().contains(q));
+            boolean matchEmail = (p.getEmail() != null && p.getEmail().toLowerCase().contains(q));
+
+            if (matchId || matchName || matchEmail) {
+                matches.add(p);
+            }
+        }
+
+        if (matches.isEmpty()) {
+            System.out.println("No matches found in master.");
+            return;
+        }
+
+        if (matches.size() == 1) {
+            System.out.println("Found: " + matches.get(0).toString());
+            return;
+        }
+
+        System.out.println("Multiple matches (" + matches.size() + "). Enter exact name to disambiguate:");
+        String name = sc.nextLine().trim().toLowerCase();
+
+        // Disambiguate by name (Loop)
+        List<Participant> nm = new ArrayList<>();
+        for (Participant p : matches) {
+            if (p.getName() != null && p.getName().equalsIgnoreCase(name)) {
+                nm.add(p);
+            }
+        }
+
+        if (nm.size() == 1) {
+            System.out.println("Found: " + nm.get(0).toString());
+            return;
+        }
+
+        System.out.println("Still ambiguous. Enter exact email:");
+        String email = sc.nextLine().trim().toLowerCase();
+
+        // Disambiguate by email (Loop)
+        List<Participant> em = new ArrayList<>();
+        for (Participant p : matches) {
+            if (p.getEmail() != null && p.getEmail().equalsIgnoreCase(email)) {
+                em.add(p);
+            }
+        }
+
+        if (em.size() == 1) System.out.println("Found: " + em.get(0).toString());
+        else System.out.println("Could not uniquely identify participant. Please refine your query.");
+    }
+
+    private void resetTournament() {
+        System.out.println("\nWARNING: This will clear ALL team assignments from the Master File.");
+        System.out.println("This is used to start a NEW tournament.");
+        System.out.print("Are you sure? (yes/no): ");
+        String confirm = sc.nextLine().trim().toLowerCase();
+
+        if (confirm.equals("yes")) {
+            // Clear memory logic
+            currentTeams.clear();
+            currentLeftovers.clear();
+            preparedCandidates.clear();
+
+            // Clear file logic
+            fm.resetAllAssignments(masterMap);
+
+            System.out.println("Tournament data has been reset. You can now form new teams.");
+        } else {
+            System.out.println("Reset cancelled.");
+        }
+    }
+    //helper method
+    private int calculateNextTeamId() {
+        int maxId = 0;
+        // Loop through master map to find highest Team-X
+        for (Participant p : masterMap.values()) {
+            String assigned = p.getAssigned();
+            if (assigned != null && assigned.startsWith("Team-")) {
+                try {
+                    String numPart = assigned.replace("Team-", "");
+                    int num = Integer.parseInt(numPart);
+                    if (num > maxId) maxId = num;
+                } catch (Exception ignored) {}
+            }
+        }
+        return maxId + 1; // Start at next number
     }
 }
-
-//public class OrganizerUI implements OrganizerInterface {
-//
-//    private String csvFile = "C:\\Users\\pc\\Desktop\\Stage02\\CM2601[PRO]\\coursework\\Starter pack\\participants_sample.csv" ;
-//    private List<Participant> participants = new ArrayList<>();
-//    private final FileManager fileManager = new FileManager();
-//    private final PersonalityClassifier classifier = new PersonalityClassifier();
-//    private TeamBuilder builder;
-//
-//    @Override
-//    public void uploadCSV() {
-//        Scanner sc = new Scanner(System.in);
-//        System.out.print("Enter CSV path (leave empty for members.csv): ");
-//        String path = sc.nextLine().trim();
-//        if (!path.isEmpty()) csvFile = path;
-//        participants = fileManager.loadCSV(csvFile);
-//
-//        // If some participants lack personality score or type, compute them (and update CSV).
-//        boolean updated = false;
-//        for (Participant p : participants) {
-//            if (p.getPersonalityScore() <= 0 || p.getPersonalityType() == null || p.getPersonalityType().isEmpty()) {
-//                // We cannot compute from answers if they weren't provided, but if score is 0, treat as needing computation
-//                // We will ask the organizer whether to set default behavior: set unknowns via an interactive prompt? Simpler: classify with default
-//                System.out.println("Participant " + p.getName() + " has missing personality fields. Setting defaults based on current score (if any).");
-//                int score = p.getPersonalityScore();
-//                if (score <= 0) {
-//                    // no score – ask the organizer whether to ask this participant now (interactive) or skip
-//                    System.out.print("Enter total score for " + p.getName() + " (or leave empty to set 60): ");
-//                    String in = sc.nextLine().trim();
-//                    if (!in.isEmpty()) {
-//                        try { score = Integer.parseInt(in); } catch (Exception ex) { score = 60; }
-//                    } else score = 60;
-//                }
-//                p.setPersonalityScore(score);
-//                p.setPersonalityType(classifier.classify(score));
-//                updated = true;
-//            }
-//        }
-//        if (updated) {
-//            // overwrite members.csv with the updated participants
-//            fileManager.overwriteMembersCSV(csvFile, participants);
-//        }
-//
-//        System.out.println("Loaded participants: " + participants.size());
-//    }
-//
-//    @Override
-//    public void formTeams() {
-//        if (participants == null || participants.isEmpty()) {
-//            System.out.println("No participants loaded. Run uploadCSV first.");
-//            return;
-//        }
-//        Scanner sc = new Scanner(System.in);
-//        int teamSize = 0;
-//        while (true) {
-//            System.out.print("Enter desired team size (N): ");
-//            try {
-//                teamSize = Integer.parseInt(sc.nextLine().trim());
-//                if (teamSize < 1) throw new NumberFormatException();
-//                break;
-//            } catch (Exception e) {
-//                System.out.println("Enter a positive integer.");
-//            }
-//        }
-//        builder = new TeamBuilder(teamSize, participants);
-//        builder.formTeams();
-//
-//        // Save full teams
-//        fileManager.saveTeamsCSV(builder.getTeams(), "formed_teams.csv");
-//
-//        // Save leftovers
-//        fileManager.saveParticipantsCSV(builder.getLeftoverParticipants(), "remaining.csv");
-//
-//        // After forming teams, update members.csv: assign team numbers maybe by rewriting members.csv to include team id?
-//        // The brief wanted: people who got placed go to new file (formed_teams.csv) and remaining stay in same file.
-//        // We already wrote formed_teams.csv and remaining.csv. We also will update members.csv to mark team assignment in a simple way:
-//        // For clarity we will rewrite members.csv but keep original columns; participants who were placed will keep their rows unchanged (but they now exist in formed_teams.csv).
-//        // Organizer can choose to remove placed participants from members.csv if desired. We'll ask:
-//        System.out.print("Remove placed participants from members.csv? (y/n) [n]: ");
-//        String rm = sc.nextLine().trim().toLowerCase();
-//        if (rm.equals("y")) {
-//            // remove all placed participants from members list and overwrite members.csv
-//            Set<String> placedIds = builder.getTeams().stream()
-//                    .flatMap(t -> t.getMembers().stream())
-//                    .map(p -> p.getId())
-//                    .collect(Collectors.toSet());
-//            List<Participant> remaining = participants.stream()
-//                    .filter(p -> !placedIds.contains(p.getId()))
-//                    .collect(Collectors.toList());
-//            fileManager.overwriteMembersCSV(csvFile, remaining);
-//            System.out.println("Removed placed participants from members.csv; remaining count: " + remaining.size());
-//        } else {
-//            System.out.println("members.csv unchanged; placed participants are also in formed_teams.csv.");
-//        }
-//    }
-//
-//    @Override
-//    public void viewResults() {
-//        if (builder == null) {
-//            System.out.println("No teams formed yet.");
-//            return;
-//        }
-//        builder.displayAllTeams();
-//        System.out.println("Formed teams saved to formed_teams.csv");
-//    }
-//
-//    @Override
-//    public void searchMember(String query) {
-//        if (participants == null || participants.isEmpty()) {
-//            System.out.println("No members loaded. Upload CSV first.");
-//            return;
-//        }
-//        String q = query.trim().toLowerCase();
-//        boolean found = false;
-//        for (Participant p : participants) {
-//            if (p.getName().toLowerCase().contains(q) || p.getEmail().toLowerCase().contains(q) || (p.getId()!=null && p.getId().toLowerCase().contains(q))) {
-//                System.out.println(p);
-//                found = true;
-//            }
-//        }
-//        if (!found) System.out.println("No matching member found for: " + query);
-//    }
-//}
-
-//public class OrganizerUI implements OrganizerInterface {
-//
-//    private String csvFile;
-//    private List<Participant> participants;
-//    private final FileManager fileManager = new FileManager();
-//    private TeamBuilder builder;
-//
-//    @Override
-//    public void uploadCSV() {
-//        Scanner sc = new Scanner(System.in);
-//        System.out.print("Enter CSV file path to load (leave empty for default members.csv): ");
-//        String path = sc.nextLine().trim();
-//        csvFile = path.isEmpty() ? "C:\\Users\\Sanuli\\Desktop\\Stage02\\CM2601[PRO]\\coursework\\Starter pack\\participants_sample.csv" : path;
-//
-//        participants = fileManager.loadCSV(csvFile);
-//        PersonalityClassifier classifier = new PersonalityClassifier();
-//        for (Participant p : participants)
-//            p.setPersonalityType(classifier.classify(p));
-//
-//        System.out.println("✅ Loaded " + participants.size() + " participants.\n");
-//    }
-//
-//    @Override
-//    public void formTeams() {
-//        if (participants == null || participants.isEmpty()) {
-//            System.out.println("⚠️ No participants loaded!");
-//            return;
-//        }
-//
-//        Scanner sc = new Scanner(System.in);
-//        System.out.print("Enter desired team size: ");
-//        int size = Integer.parseInt(sc.nextLine());
-//
-//        builder = new TeamBuilder(size, participants);
-//        builder.formTeams();
-//
-//        // save results
-//        List<Team> formed = builder.getTeams();
-//        fileManager.saveTeamsCSV(formed, "formed_teams.csv");
-//
-//        // keep leftovers (if any)
-//        List<Participant> leftover = builder.getLeftoverParticipants();
-//        if (!leftover.isEmpty())
-//            fileManager.saveParticipantsCSV(leftover, "remaining.csv");
-//    }
-//
-//    @Override
-//    public void viewResults() {
-//        if (builder == null) {
-//            System.out.println("⚠️ No teams formed yet.");
-//            return;
-//        }
-//        builder.displayAllTeams();
-//        System.out.println("Results saved to formed_teams.csv");
-//    }
-//}
-//

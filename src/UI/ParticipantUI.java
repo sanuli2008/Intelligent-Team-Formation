@@ -1,249 +1,136 @@
 package UI;
 
-import java.util.Scanner;
-import Interfaces.ParticipantInterface;
 import Logic.FileManager;
 import Logic.PersonalityClassifier;
 import Model.Participant;
+
+import java.util.Map;
 import java.util.Scanner;
 
-public class ParticipantUI implements ParticipantInterface {
-
-    private final String csvFile;
-    private final FileManager fileManager = new FileManager();
+/**
+ * ParticipantUI - friendly participant console interface
+ *
+ * Behavior:
+ *  - Allow registration with ID validation (unique)
+ *  - Ask survey Qs one-by-one
+ *  - Allow participant to find their assigned team (privacy: only show own data)
+ */
+public class ParticipantUI {
+    private final FileManager fm = new FileManager();
     private final PersonalityClassifier classifier = new PersonalityClassifier();
+    private final Scanner sc = new Scanner(System.in);
 
-    public ParticipantUI(String csvFile) { this.csvFile = csvFile; }
+    public ParticipantUI() {
+        fm.ensureMasterExists();
+    }
 
-    @Override
-    public void enterDetails() {
-        Scanner sc = new Scanner(System.in);
+    public void participantMenu() {
+        while (true) {
+            System.out.println("\n--- Participant Menu ---");
+            System.out.println("1) Register (complete survey)");
+            System.out.println("2) Find my team by ID");
+            System.out.println("3) Back to main menu");
+            System.out.print("Choice: ");
+            String c = sc.nextLine().trim();
+            if ("1".equals(c)) register();
+            else if ("2".equals(c)) findTeamById();
+            else if ("3".equals(c)) return;
+            else System.out.println("Please choose 1, 2, or 3.");
+        }
+    }
+
+    private void register() {
         System.out.println("\n=== Participant Registration ===");
+        fm.ensureMasterExists();
+        Map<String, Participant> master = fm.readMasterMap();
+
+        String id;
+        while (true) {
+            System.out.print("Enter your ID (P###): ");
+            id = sc.nextLine().trim();
+            if (id.isEmpty() || id.matches("(?i)P\\d{3}")) {
+                if (!id.isEmpty() && master.containsKey(id)) {
+                    System.out.println("This ID already exists in the system. Please contact organizer or use a different ID.");
+                    continue;
+                }
+                break;
+            }
+            System.out.println("Invalid format. Use P followed by 3 digits (e.g., P001) or leave blank.");
+        }
 
         String name;
-        while (true) {
-            System.out.print("Full name: ");
-            name = sc.nextLine().trim();
-            if (!name.isEmpty()) break;
-            System.out.println("Name cannot be empty.");
-        }
+        while (true) { System.out.print("Full name: "); name = sc.nextLine().trim(); if (!name.isEmpty()) break; System.out.println("Name cannot be empty."); }
 
         String email;
-        while (true) {
-            System.out.print("Email: ");
-            email = sc.nextLine().trim();
-            if (email.contains("@") && email.contains(".")) break;
-            System.out.println("Enter a valid email.");
-        }
+        while (true) { System.out.print("Email: "); email = sc.nextLine().trim(); if (email.contains("@") && email.contains(".")) break; System.out.println("Enter a valid email."); }
 
-        System.out.print("Preferred Game: ");
-        String game = sc.nextLine().trim();
-        if (game.isEmpty()) game = "Unknown";
+        System.out.print("Preferred game/sport (e.g., FIFA, Chess): ");
+        String game = sc.nextLine().trim(); if (game.isEmpty()) game = "Unknown";
 
         String role;
         while (true) {
-            System.out.println("Preferred Role (type exact): Strategist, Attacker, Defender, Supporter, Coordinator");
+            System.out.println("Choose preferred role (type exactly): Strategist, Attacker, Defender, Supporter, Coordinator");
             System.out.print("Role: ");
             role = sc.nextLine().trim();
-            if (role.equalsIgnoreCase("Strategist") || role.equalsIgnoreCase("Attacker")
-                    || role.equalsIgnoreCase("Defender") || role.equalsIgnoreCase("Supporter")
-                    || role.equalsIgnoreCase("Coordinator")) break;
-            System.out.println("Invalid role. Choose one of the listed roles.");
+            if (role.equalsIgnoreCase("Strategist") || role.equalsIgnoreCase("Attacker") ||
+                    role.equalsIgnoreCase("Defender") || role.equalsIgnoreCase("Supporter") ||
+                    role.equalsIgnoreCase("Coordinator")) break;
+            System.out.println("Invalid role.");
         }
 
         int skill = 0;
         while (true) {
             System.out.print("Skill level (1-10): ");
-            try {
-                skill = Integer.parseInt(sc.nextLine().trim());
-                if (skill >= 1 && skill <= 10) break;
-                System.out.println("Enter 1..10.");
-            } catch (Exception e) {
-                System.out.println("Enter a number 1..10.");
-            }
+            try { skill = Integer.parseInt(sc.nextLine().trim()); if (skill >=1 && skill <=10) break; } catch (Exception ignored) {}
+            System.out.println("Enter integer between 1 and 10.");
         }
 
-        System.out.println("\nAnswer the following 5 questions (1 Strongly Disagree .. 5 Strongly Agree).");
-        int q1 = askQ(sc, "Q1: I enjoy taking the lead and guiding others during group activities.");
-        int q2 = askQ(sc, "Q2: I prefer analyzing situations and coming up with strategic solutions.");
-        int q3 = askQ(sc, "Q3: I work well with others and enjoy collaborative teamwork.");
-        int q4 = askQ(sc, "Q4: I am calm under pressure and can help maintain team morale.");
-        int q5 = askQ(sc, "Q5: I like making quick decisions and adapting in dynamic situations.");
+        System.out.println("\nPlease answer the following five statements (1 = Strongly Disagree ... 5 = Strongly Agree). Answer one-by-one.");
+        int q1 = askQ("Q1: I enjoy taking the lead and guiding others during group activities.");
+        int q2 = askQ("Q2: I prefer analyzing situations and coming up with strategic solutions.");
+        int q3 = askQ("Q3: I work well with others and enjoy collaborative teamwork.");
+        int q4 = askQ("Q4: I am calm under pressure and can help maintain team morale.");
+        int q5 = askQ("Q5: I like making quick decisions and adapting in dynamic situations.");
 
-        int score = classifier.computeScoreFromAnswers(q1,q2,q3,q4,q5); // scaled to 20..100
+        int score = classifier.computeScore(q1,q2,q3,q4,q5);
         String type = classifier.classify(score);
 
-        Participant p = new Participant(name, email, game, skill, role, score, type);
-        String assignedId = fileManager.appendParticipant(csvFile, p);
-        System.out.println("Registration complete. Your ID: " + assignedId + " | Personality: " + type + " | Assigned: Unassigned");
+        // reject registration for users with undefined personality type
+        if ("Undefined".equalsIgnoreCase(type)) {
+            System.out.println("\n[Regret] Your personality score (" + score + ") does not meet the criteria for classification.");
+            System.out.println("Registration cannot be completed at this time.");
+            return;
+        }
+
+        // 5. Save if Valid
+        Participant p = new Participant(id.isEmpty() ? null : id, name, email, game, skill, role, score, type, "Unassigned");
+        String assignedId = fm.appendNewParticipant(p);
+
+        if (assignedId != null) {
+            System.out.println("Registration successful! ID: " + assignedId + " | Type: " + type);
+        } else {
+            System.out.println("Error saving participant.");
+        }
+
     }
 
-    private int askQ(Scanner sc, String prompt) {
+    private int askQ(String prompt) {
         while (true) {
             System.out.print(prompt + " (1-5): ");
-            try {
-                int a = Integer.parseInt(sc.nextLine().trim());
-                if (a >= 1 && a <= 5) return a;
-            } catch (Exception e) {}
-            System.out.println("Enter 1..5.");
+            try { int v = Integer.parseInt(sc.nextLine().trim()); if (v >=1 && v <=5) return v; } catch (Exception ignored) {}
+            System.out.println("Please answer with an integer between 1 and 5.");
+        }
+    }
+
+    private void findTeamById() {
+        System.out.print("Enter your ID (P###): ");
+        String id = sc.nextLine().trim();
+        Map<String, Participant> master = fm.readMasterMap();
+        if (master.containsKey(id)) {
+            Participant p = master.get(id);
+            System.out.println("Name: " + p.getName() + " | Assigned: " + p.getAssigned());
+        } else {
+            System.out.println("ID not found. If you recently registered, ensure you saved the registration or contact the organizer.");
         }
     }
 }
-
-//public class ParticipantUI implements ParticipantInterface {
-//
-//    private final String csvFile;
-//    private final FileManager fileManager = new FileManager();
-//    private final PersonalityClassifier classifier = new PersonalityClassifier();
-//
-//    public ParticipantUI(String csvFile) {
-//        this.csvFile = csvFile;
-//    }
-//
-//    @Override
-//    public void enterDetails() {
-//        Scanner sc = new Scanner(System.in);
-//        System.out.println("\n=== Participant Survey ===");
-//        System.out.print("Full name: ");
-//        String name = sc.nextLine().trim();
-//        System.out.print("Email: ");
-//        String email = sc.nextLine().trim();
-//        System.out.print("Preferred Game: ");
-//        String game = sc.nextLine().trim();
-//
-//        // Roles: show options
-//        System.out.println("Choose preferred role (type exact): Strategist, Attacker, Defender, Supporter, Coordinator");
-//        System.out.print("Role: ");
-//        String role = sc.nextLine().trim();
-//
-//        int skill = 0;
-//        while (true) {
-//            System.out.print("Skill level (1-10): ");
-//            try {
-//                skill = Integer.parseInt(sc.nextLine().trim());
-//                if (skill < 1 || skill > 10) throw new NumberFormatException();
-//                break;
-//            } catch (Exception e) {
-//                System.out.println("Enter a number between 1 and 10.");
-//            }
-//        }
-//
-//        System.out.println("\nAnswer the 5 personality questions (1 Strongly Disagree ... 5 Strongly Agree).");
-//        System.out.println("Q1: I enjoy taking the lead and guiding others during group activities.");
-//        System.out.println("Q2: I prefer analyzing situations and coming up with strategic solutions.");
-//        System.out.println("Q3: I work well with others and enjoy collaborative teamwork.");
-//        System.out.println("Q4: I am calm under pressure and can help maintain team morale.");
-//        System.out.println("Q5: I like making quick decisions and adapting in dynamic situations.");
-//
-//        int q1 = askQ(sc, "Q1");
-//        int q2 = askQ(sc, "Q2");
-//        int q3 = askQ(sc, "Q3");
-//        int q4 = askQ(sc, "Q4");
-//        int q5 = askQ(sc, "Q5");
-//
-//        int score = classifier.computeScoreFromAnswers(q1,q2,q3,q4,q5); // scaled 20..100 or 5*4
-//        String type = classifier.classify(score);
-//
-//        Participant p = new Participant(name, email, game, skill, role, score, type);
-//        String newId = fileManager.appendParticipant(csvFile, p);
-//
-//        System.out.println("Thanks! Your ID: " + newId + " Personality type: " + type);
-//    }
-//
-//    private int askQ(Scanner sc, String q) {
-//        while (true) {
-//            System.out.print(q + " (1-5): ");
-//            try {
-//                int a = Integer.parseInt(sc.nextLine().trim());
-//                if (a < 1 || a > 5) throw new NumberFormatException();
-//                return a;
-//            } catch (Exception e) {
-//                System.out.println("Enter 1..5.");
-//            }
-//        }
-//    }
-//}
-
-//// ui/ParticipantUI.java
-//import java.io.*;
-//import java.util.Scanner;
-//
-//import Interfaces.ParticipantInterface;
-//import Model.Participant;
-//import Logic.PersonalityClassifier;
-//
-//public class ParticipantUI implements ParticipantInterface {
-//
-//    private final String csvFile;
-//    private final PersonalityClassifier classifier = new PersonalityClassifier();
-//
-//    public ParticipantUI(String csvFile) {
-//        this.csvFile = csvFile;
-//    }
-//
-//    @Override
-//    public void enterDetails() {
-//        Scanner sc = new Scanner(System.in);
-//        System.out.println("\n--- Participant Survey ---");
-//
-//        System.out.print("Name: ");        String name = sc.nextLine();
-//        System.out.print("Game/Sport: ");  String game = sc.nextLine();
-//        System.out.print("Preferred Role: "); String role = sc.nextLine();
-//        System.out.print("Skill level (0-100): ");
-//        int skill = Integer.parseInt(sc.nextLine());
-//
-//        // five personality questions → numeric answers
-//        int score = 0;
-//        for (int i = 1; i <= 5; i++) {
-//            System.out.print("Q" + i + " (1-20): ");
-//            score += Integer.parseInt(sc.nextLine());
-//        }
-//
-//        Participant p = new Participant(name, game, role, skill, score);
-//        p.setPersonalityType(classifier.classify(p));
-//
-//        // append to CSV
-//        try (BufferedWriter bw = new BufferedWriter(new FileWriter(csvFile, true))) {
-//            bw.write(p.getName() + "," + p.getGame() + "," + p.getRole() + ","
-//                    + p.getSkillLevel() + "," + p.getPersonalityScore() + ","
-//                    + p.getPersonalityType());
-//            bw.newLine();
-//            System.out.println("✅ Your response has been recorded.\n");
-//        } catch (IOException e) {
-//            System.out.println("❌ Could not write to file: " + e.getMessage());
-//        }
-//    }
-//}
-
-//public class ParticipantUI {
-//
-//    private final String csvFile;
-//    private final FileManager fileManager = new FileManager();
-//    private final PersonalityClassifier classifier = new PersonalityClassifier();
-//
-//    public ParticipantUI(String csvFile) {
-//        this.csvFile = csvFile;
-//    }
-//
-//    public void enterDetails() {
-//        Scanner sc = new Scanner(System.in);
-//        System.out.println("\n--- Participant Survey ---");
-//        System.out.print("Name: "); String name = sc.nextLine();
-//        System.out.print("Email: "); String email = sc.nextLine();
-//        System.out.print("Preferred Game: "); String game = sc.nextLine();
-//        System.out.print("Preferred Role: "); String role = sc.nextLine();
-//        System.out.print("Skill Level (0-5): "); int skill = Integer.parseInt(sc.nextLine());
-//
-//        int score = 0;
-//        for (int i=1;i<=5;i++) {
-//            System.out.print("Personality Question " + i + " (1-20): ");
-//            score += Integer.parseInt(sc.nextLine());
-//        }
-//
-//        String type = classifier.classify(score);
-//        Participant p = new Participant(name, email, game, skill, role, score, type);
-//        fileManager.appendParticipant(csvFile, p);
-//
-//    }
-//}
-
