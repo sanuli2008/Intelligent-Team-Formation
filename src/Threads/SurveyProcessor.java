@@ -17,10 +17,12 @@ public class SurveyProcessor extends TaskBase {
     }
 
     @Override
+//sq number 1.4 in form teams use case of organizer
     public void run() {
         System.out.println("[SurveyProcessor] Processing survey data...");
         //can access 'participants' directly because it is in the parent
         for (Participant p : participants) {
+            //sq number 1.4.1 in form teams use case of organizer
             classifier.ensureType(p);
             try { Thread.sleep(5); } catch (InterruptedException ignored) {}
         }

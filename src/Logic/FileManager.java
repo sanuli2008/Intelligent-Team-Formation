@@ -51,6 +51,11 @@ public class FileManager {
                 if (line.trim().isEmpty()) continue;
 
                 try {
+                    //sq number 1.1.1. in upload participant data use case of organizer
+                    //sq number 1.2.1 in export formed teams use case of organizer
+                    //sq number 1.1.1 in search participants use case of organizer
+                    //sq number 1.2.1 in register use case of participant
+                    //sq number 1.1.1 in find team by ID use case of participant
                     // This method now throws an exception, so we must catch it
                     Participant p = parseLineToParticipant(line);
                     map.put(p.getId(), p);
@@ -69,6 +74,7 @@ public class FileManager {
         if (corruptLineCount > 0) {
             System.out.println("[FileManager] Warning: Skipped " + corruptLineCount + " invalid entries during master load.");
         }
+        //sq number 1.2 in find team by ID use case of participant
         return map;
     }
 
@@ -78,6 +84,7 @@ public class FileManager {
             bw.write(HEADER);
             bw.newLine();
             for (Participant p : map.values()) {
+                //sq number 1.4.1 in export formed teams use case of organizer
                 bw.write(csvFromParticipant(p));
                 bw.newLine();
             }
@@ -89,7 +96,9 @@ public class FileManager {
 
     //appending newly registered participant to the master file
     public String appendNewParticipant(Participant p) {
+        //sq number 1.15.1 in register use case of participant
         ensureMasterExists();
+        //sq number 1.15.2 in register use case of participant
         Map<String, Participant> master = readMasterMap();
 
         // 1. Enforce ID existence and uniqueness (as requested)
@@ -105,6 +114,7 @@ public class FileManager {
         if (p.getAssigned() == null || p.getAssigned().isEmpty()) p.setAssigned("Unassigned");
 
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(MASTER_PATH, true))) {
+            //sq number 1.15.3 in register use case of participant
             bw.write(csvFromParticipant(p));
             bw.newLine();
             System.out.println("[FileManager] Appended participant: " + p.getName() + " (" + p.getId() + ")");
@@ -128,6 +138,7 @@ public class FileManager {
             // check for assigned column
             String header = br.readLine();
             if (header != null && header.toLowerCase().contains("assigned")) {
+                //sq number 1.2.1 in upload participant data use case of organizer
                 throw new InvalidDataException("File contains 'Assigned' column. Re-importing assigned files is not allowed.");
             }
 
@@ -137,6 +148,7 @@ public class FileManager {
                 if (line.trim().isEmpty()) continue;
 
                 try {
+                    //sq number 1.2.2 in upload participant data use case of organizer
                     Participant p = parseLineToParticipant(line);
 
                     // If the ID exists in master, we skip it here.
@@ -212,7 +224,9 @@ public class FileManager {
     }
 
     public Map<String, Participant> mergeUploadedIntoMasterAtExport(List<Participant> uploaded) {
+        //sq number 1.1.1 in export formed teams use case of organizer
         ensureMasterExists();
+        //sq number 1.1.2 in export formed teams use case of organizer
         Map<String, Participant> master = readMasterMap();
         Map<String, String> emailToId = new HashMap<>();
         int skippedCount = 0;
@@ -263,12 +277,14 @@ public class FileManager {
         return master;
     }
 
+    //sq number 1.6 in export formed teams use case of organizer
     public String exportTeams(List<Team> teams, String prefix) {
         String ts = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String fname = prefix + "_" + ts + ".csv";
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(fname))) {
             bw.write("TeamID,ID,Name,Email,PreferredGame,SkillLevel,PreferredRole,PersonalityScore,PersonalityType");
             bw.newLine();
+
             for (Team t : teams) {
                 for (Participant p : t.getMembers()) {
                     bw.write(String.join(",",
@@ -359,6 +375,7 @@ public class FileManager {
         }
 
         // 2. Save back to file
+        //sq number 1.1.1 in reset tournament use case of organizer
         writeMasterFromMap(masterMap);
 
         // 3. Log it (since you have logging now)

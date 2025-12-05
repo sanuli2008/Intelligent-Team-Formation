@@ -21,10 +21,13 @@ public class TeamFormationWorker extends TaskBase {
     }
 
     @Override
+    //sq number 1.5 in form teams use case of organizer
     public void run() {
         System.out.println("[TeamFormationWorker] Starting formation...");
         // Use 'participants' (inherited field) instead of 'candidates'
+        //sq number 1.5.1 in form teams use case of organizer
         builder = new TeamBuilder(participants, teamSize, startId);
+        //sq number 1.5.2 in form teams use case of organizer
         builder.formTeams();
         System.out.println("[TeamFormationWorker] Formation done.");
     }

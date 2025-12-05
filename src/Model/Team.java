@@ -13,6 +13,7 @@ public class Team {
 
     public Team(int id) { this.teamID = id; }
     public int getTeamID() { return teamID; }
+    //sq number 1.6.1 in export formed teams use case of organizer
     public List<Participant> getMembers() { return members; }
     public void addMember(Participant p) { members.add(p); }
     public int size() { return members.size(); }
@@ -25,6 +26,7 @@ public class Team {
     }
 
     public void displayTeam() {
+        //sq number 1.1.1 in view formed teams use case of organizer
         System.out.println("\n=== Team-" + teamID + " (Avg skill: " + String.format("%.2f", averageSkill()) + ") ===");
         for (Participant p : members) {
             System.out.println(" - " + p.getId() + " | " + p.getName() + " | Role: " + p.getRole()

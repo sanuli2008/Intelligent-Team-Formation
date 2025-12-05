@@ -66,6 +66,7 @@ public class OrganizerUI {
         System.out.println("Master loaded. Participants: " + masterMap.size());
     }
 
+    //sq number 1 in upload participant data use case of organizer
     //to upload an external file
     private void uploadAndPrepare() {
         System.out.print("Enter CSV path to upload: ");
@@ -78,9 +79,11 @@ public class OrganizerUI {
             return;
         }
 
+        //sq number 1.1 in upload participant data use case of organizer
         masterMap = fm.readMasterMap();
 
         try {
+            //sq number 1.2 in upload participant data use case of organizer
             //to prevent uploading already uploaded file
             List<Participant> validCandidates = fm.importCandidates(path, masterMap);
 
@@ -104,6 +107,7 @@ public class OrganizerUI {
     }
 
     //form teams with valid participants
+    //sq number 1 in form teams use case of organizer
     private void formTeams() {
         List<Participant> source = new ArrayList<>();
 
@@ -136,9 +140,12 @@ public class OrganizerUI {
             System.out.println("Please enter a valid integer between 3 and 10.");
         }
 
+        //sq number 1.1 in form teams use case of organizer
         int startId = calculateNextTeamId();
         //using threads to perform tasks parallelly.
+        //sq number 1.2 in form teams use case of organizer
         SurveyProcessor sp = new SurveyProcessor(source, classifier);
+        //sq number 1.3 in form teams use case of organizer
         TeamFormationWorker tfw = new TeamFormationWorker(source, teamSize, startId);
 
         Thread t1 = new Thread(sp, "SurveyProcessor");
@@ -164,6 +171,7 @@ public class OrganizerUI {
 
     // export teams to make sure they are stored
     // unless formed teams would be disappeared since they are stored in memory
+    //sq number 1 in export formed teams use case of organizer
     private void exportFormedTeams() {
         if (currentTeams == null || currentTeams.isEmpty()) {
             System.out.println("No teams to export. Please form teams first (option 3).");
@@ -171,14 +179,17 @@ public class OrganizerUI {
         }
 
         if (lastUploadedRows != null && !lastUploadedRows.isEmpty()) {
+            //sq number 1.1 in export formed teams use case of organizer
             masterMap = fm.mergeUploadedIntoMasterAtExport(lastUploadedRows);
         } else {
+            //sq number 1.2 in export formed teams use case of organizer
             masterMap = fm.readMasterMap();
         }
 
         // Remove empty teams ONLY. Do NOT re-index/renumber them.
         List<Team> nonEmptyTeams = new ArrayList<>();
         for (Team t : currentTeams) {
+            //sq number 1.3 in export formed teams use case of organizer
             if (t.size() > 0) {
                 nonEmptyTeams.add(t);
             }
@@ -207,9 +218,11 @@ public class OrganizerUI {
             else masterMap.get(p.getId()).setAssigned("Unassigned");
         }
 
+        //sq number 1.4 in export formed teams use case of organizer
         fm.writeMasterFromMap(masterMap);
 
         if (lastUploadedFilePath != null && lastUploadedRows != null) {
+            //sq number 1.5 in export formed teams use case of organizer
             fm.updateUploadedFileWithAssignments(lastUploadedFilePath, lastUploadedRows, masterMap);
         }
 
@@ -230,19 +243,23 @@ public class OrganizerUI {
         currentTeams.clear();
     }
 
+    //sq number 1 in view formed teams use case of organizer
     private void viewTeams() {
         if (currentTeams == null || currentTeams.isEmpty()) {
             System.out.println("No teams in memory.");
             return;
         }
+        //sq number 1.1 in view formed teams use case of organizer
         for (Team t : currentTeams) t.displayTeam();
     }
 
     //search for partciapnts
+    //sq number 1 in search participants use case of organizer
     private void searchParticipant() {
         System.out.print("Enter ID or Name or Email to search: ");
         String q = sc.nextLine().trim().toLowerCase();
 
+        //sq number 1.1 in search participants use case of organizer
         masterMap = fm.readMasterMap();
 
         List<Participant> matches = new ArrayList<>();
@@ -261,6 +278,7 @@ public class OrganizerUI {
             return;
         }
 
+        //sq number 1.2 in search participants use case of organizer
         if (matches.size() == 1) {
             System.out.println("Found: " + matches.get(0).toString());
             return;
@@ -277,6 +295,7 @@ public class OrganizerUI {
             }
         }
 
+        //sq number 1.3 in search participants use case of organizer
         if (nm.size() == 1) {
             System.out.println("Found: " + nm.get(0).toString());
             return;
@@ -293,10 +312,12 @@ public class OrganizerUI {
             }
         }
 
+        //sq number 1.4 in search participants use case of organizer
         if (em.size() == 1) System.out.println("Found: " + em.get(0).toString());
         else System.out.println("Could not uniquely identify participant. Please refine your query.");
     }
 
+    //sq number 1 in reset tournament use case of organizer
     private void resetTournament() {
         System.out.println("\nWARNING: This will clear ALL team assignments from the Master File.");
         System.out.println("This is used to start a NEW tournament.");
@@ -310,6 +331,7 @@ public class OrganizerUI {
             preparedCandidates.clear();
 
             // Clear file logic
+            //sq number 1.1 in reset tournament use case of organizer
             fm.resetAllAssignments(masterMap);
 
             System.out.println("Tournament data has been reset. You can now form new teams.");

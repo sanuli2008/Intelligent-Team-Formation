@@ -47,6 +47,7 @@ public class TeamBalancer {
             // Tentative swap
             t1.getMembers().remove(p1); t2.getMembers().remove(p2);
 
+            //sq number 1.5.2.1.1 in form teams use case of organizer
             boolean ok1 = checker.canAddToTeam(t1, p2, teamSize);
             boolean ok2 = checker.canAddToTeam(t2, p1, teamSize);
 

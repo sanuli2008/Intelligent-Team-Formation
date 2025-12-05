@@ -138,6 +138,7 @@ public class TeamBuilder {
         leftovers.addAll(pool);
 
         // Skill Balancing (swapping members between teams to even out averages)
+        //sq number 1.5.2.1 in form teams use case of organizer
         balancer.balance(teams, BALANCE_ATTEMPTS, teamSize);
 
         // PHASE 4: Final Validation
