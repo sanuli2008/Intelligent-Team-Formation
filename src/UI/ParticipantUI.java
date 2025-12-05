@@ -1,7 +1,9 @@
 package UI;
 
+import Exceptions.ValidationException;
 import Logic.FileManager;
 import Logic.PersonalityClassifier;
+import Logic.ValidationService;
 import Model.Participant;
 
 import java.util.Map;
@@ -48,41 +50,78 @@ public class ParticipantUI {
         while (true) {
             System.out.print("Enter your ID (P###): ");
             id = sc.nextLine().trim();
-            if (id.isEmpty() || id.matches("(?i)P\\d{3}")) {
-                if (!id.isEmpty() && master.containsKey(id)) {
-                    System.out.println("This ID already exists in the system. Please contact organizer or use a different ID.");
+            try {
+                // Delegation: Use ValidationService for format check
+                ValidationService.validateIdFormat(id);
+
+                if (master.containsKey(id)) {
+                    System.out.println("This ID already exists in the system. You must register with a unique ID or contact organizer.");
                     continue;
                 }
                 break;
+            } catch (ValidationException e) {
+                System.out.println(e.getMessage());
             }
-            System.out.println("Invalid format. Use P followed by 3 digits (e.g., P001) or leave blank.");
         }
 
         String name;
-        while (true) { System.out.print("Full name: "); name = sc.nextLine().trim(); if (!name.isEmpty()) break; System.out.println("Name cannot be empty."); }
+        while (true) {
+            System.out.print("Full name: ");
+            name = sc.nextLine().trim();
+            try {
+                ValidationService.validateName(name);
+                break;
+            } catch (ValidationException e) {
+                System.out.println(e.getMessage());
+            }
+        }
 
         String email;
-        while (true) { System.out.print("Email: "); email = sc.nextLine().trim(); if (email.contains("@") && email.contains(".")) break; System.out.println("Enter a valid email."); }
+        while (true) {
+            System.out.print("Email: ");
+            email = sc.nextLine().trim();
+            try {
+                ValidationService.validateEmail(email);
+                break;
+            } catch (ValidationException e) {
+                System.out.println(e.getMessage());
+            }
+        }
 
         System.out.print("Preferred game/sport (e.g., FIFA, Chess): ");
-        String game = sc.nextLine().trim(); if (game.isEmpty()) game = "Unknown";
+        String game = sc.nextLine().trim();
+        // Game must be provided
+        if (game.isEmpty()) game = "Unknown";
+        else if (game.length() < 2) {
+            System.out.println("Game/Sport name is too short. Setting to Unknown.");
+            game = "Unknown";
+        }
 
         String role;
         while (true) {
             System.out.println("Choose preferred role (type exactly): Strategist, Attacker, Defender, Supporter, Coordinator");
             System.out.print("Role: ");
             role = sc.nextLine().trim();
+            // Role validation
             if (role.equalsIgnoreCase("Strategist") || role.equalsIgnoreCase("Attacker") ||
                     role.equalsIgnoreCase("Defender") || role.equalsIgnoreCase("Supporter") ||
                     role.equalsIgnoreCase("Coordinator")) break;
-            System.out.println("Invalid role.");
+            System.out.println("Invalid role. Please use one of the listed roles.");
         }
 
         int skill = 0;
         while (true) {
             System.out.print("Skill level (1-10): ");
-            try { skill = Integer.parseInt(sc.nextLine().trim()); if (skill >=1 && skill <=10) break; } catch (Exception ignored) {}
-            System.out.println("Enter integer between 1 and 10.");
+            try {
+                skill = Integer.parseInt(sc.nextLine().trim());
+                // Delegation: Use ValidationService for range check
+                ValidationService.validateSkillLevel(skill);
+                break;
+            } catch (NumberFormatException e) {
+                System.out.println("Enter integer between 1 and 10.");
+            } catch (ValidationException e) {
+                System.out.println(e.getMessage());
+            }
         }
 
         System.out.println("\nPlease answer the following five statements (1 = Strongly Disagree ... 5 = Strongly Agree). Answer one-by-one.");
@@ -95,23 +134,23 @@ public class ParticipantUI {
         int score = classifier.computeScore(q1,q2,q3,q4,q5);
         String type = classifier.classify(score);
 
-        // reject registration for users with undefined personality type
+        // Reject registration for users with undefined personality type (Score < 50)
         if ("Undefined".equalsIgnoreCase(type)) {
-            System.out.println("\n[Regret] Your personality score (" + score + ") does not meet the criteria for classification.");
+            System.out.println("\n[Regret] Your personality score (" + score + ") does not meet the criteria (min 50) for classification.");
             System.out.println("Registration cannot be completed at this time.");
             return;
         }
 
-        // 5. Save if Valid
-        Participant p = new Participant(id.isEmpty() ? null : id, name, email, game, skill, role, score, type, "Unassigned");
+        // Save if Valid
+        // ID is guaranteed to be non-empty and non-duplicate here
+        Participant p = new Participant(id, name, email, game, skill, role, score, type, "Unassigned");
         String assignedId = fm.appendNewParticipant(p);
 
         if (assignedId != null) {
             System.out.println("Registration successful! ID: " + assignedId + " | Type: " + type);
         } else {
-            System.out.println("Error saving participant.");
+            System.out.println("Error saving participant. Check master file or contact organizer.");
         }
-
     }
 
     private int askQ(String prompt) {

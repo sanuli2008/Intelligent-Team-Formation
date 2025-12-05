@@ -1,6 +1,7 @@
 package Logic;
 
 import Exceptions.InvalidDataException;
+import Exceptions.ValidationException;
 import Model.Participant;
 import Model.Team;
 
@@ -41,6 +42,7 @@ public class FileManager {
         Map<String, Participant> map = new LinkedHashMap<>();
         File f = new File(MASTER_PATH);
         if (!f.exists()) return map;
+        int corruptLineCount = 0;
 
         try (BufferedReader br = new BufferedReader(new FileReader(f))) {
             br.readLine(); // Skip header
@@ -51,18 +53,21 @@ public class FileManager {
                 try {
                     // This method now throws an exception, so we must catch it
                     Participant p = parseLineToParticipant(line);
-
-                    if (p.getId() == null || p.getId().isEmpty()) p.setId(generateNextPId(map));
                     map.put(p.getId(), p);
 
                 } catch (InvalidDataException e) {
                     // Log the error and skip this specific bad line
+                    LOGGER.warning("Skipping corrupt line in master file: " + e.getMessage());
                     System.out.println("[FileManager] Warning - Skipping corrupt line in master file: " + e.getMessage());
+                    corruptLineCount++;
                 }
             }
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Failed to read master file", e);
             System.out.println("[FileManager] Error reading master: " + e.getMessage());
+        }
+        if (corruptLineCount > 0) {
+            System.out.println("[FileManager] Warning: Skipped " + corruptLineCount + " invalid entries during master load.");
         }
         return map;
     }
@@ -87,14 +92,16 @@ public class FileManager {
         ensureMasterExists();
         Map<String, Participant> master = readMasterMap();
 
-        if (p.getId() != null && !p.getId().isEmpty()) {
-            if (master.containsKey(p.getId())) {
-                return null; // check if ID is already in master file
-            }
-        } else {
-            p.setId(generateNextPId(master));
+        // 1. Enforce ID existence and uniqueness (as requested)
+        if (p.getId() == null || p.getId().isEmpty()) {
+            System.out.println("[FileManager] Error: Cannot append participant. ID is missing.");
+            return null;
         }
-
+        if (master.containsKey(p.getId())) {
+            // This case should be caught by UI, but serves as a final safeguard
+            System.out.println("[FileManager] Error: Cannot append participant. ID already exists: " + p.getId());
+            return null;
+        }
         if (p.getAssigned() == null || p.getAssigned().isEmpty()) p.setAssigned("Unassigned");
 
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(MASTER_PATH, true))) {
@@ -175,8 +182,17 @@ public class FileManager {
         String assignedRaw = cols[8].trim();
 
         // VALIDATION LOGIC
-        if (id.isEmpty()) {
-            throw new InvalidDataException("ID is missing. Participant ID is mandatory.");
+        // Mandatory format checks delegated to ValidationService
+        try {
+            ValidationService.validateIdFormat(id); // Checks P### format and non-empty
+            ValidationService.validateName(name);
+            ValidationService.validateEmail(email);
+            // We skip game/role validation here, as they are often flexible in CSVs unless strictly defined.
+        } catch (ValidationException e) {
+            // Re-throw as InvalidDataException to ensure consistency in FileManager catch blocks
+            // Although we can just rethrow ValidationException, InvalidDataException is used for File issues.
+            // However, here we re-throw the ValidationException (Runtime) which is caught in readMasterMap/importCandidates.
+            throw e;
         }
         int skill;
         int pscore;
@@ -188,13 +204,9 @@ public class FileManager {
             throw new InvalidDataException("Skill or Score is not a number for: " + name);
         }
 
-        if (skill < 1 || skill > 10) {
-            throw new InvalidDataException("Skill must be 1-10. Found: " + skill + " (" + name + ")");
-        }
-        // Assuming max raw score is 25, or scaled is 100. Let's say max 100.
-        if (pscore < 0 || pscore > 100) {
-            throw new InvalidDataException("Personality Score must be 0-100. Found: " + pscore + " (" + name + ")");
-        }
+        // Range Validation delegated to ValidationService
+        ValidationService.validateSkillLevel(skill);
+        ValidationService.validatePersonalityScore(pscore);
 
         return new Participant(id, name, email, game, skill, role, pscore, ptype, interpretAssigned(assignedRaw));
     }
@@ -203,7 +215,7 @@ public class FileManager {
         ensureMasterExists();
         Map<String, Participant> master = readMasterMap();
         Map<String, String> emailToId = new HashMap<>();
-
+        int skippedCount = 0;
         for (Participant p : master.values()) {
             if (p.getEmail() != null && !p.getEmail().isEmpty()) {
                 emailToId.put(p.getEmail().toLowerCase(), p.getId());
@@ -226,17 +238,27 @@ public class FileManager {
             } else {
                 // New participant
                 if (upId != null && !upId.isEmpty()) {
+                    // Check if ID is in the correct format before adding it as new (optional but safer)
+                    if (!upId.matches("(?i)P\\d{3}")) {
+                        // Skip if invalid format
+                        LOGGER.warning("[Merge Export] Skipping new participant due to invalid ID format: " + upId);
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Add as a truly new participant
                     up.setAssigned("Unassigned");
                     master.put(upId, up);
                     emailToId.put(upEmail, upId);
                 } else {
-                    String nid = generateNextPId(master);
-                    up.setId(nid);
-                    up.setAssigned("Unassigned");
-                    master.put(nid, up);
-                    emailToId.put(upEmail, nid);
+                    //Instead of generating ID, we skip the entry.
+                    LOGGER.warning("[Merge Export] Skipping new participant due to invalid ID format: " + upId);
+                    skippedCount++;
                 }
             }
+        }
+        if (skippedCount > 0) {
+            System.out.println("[FileManager Merge] Warning: Skipped " + skippedCount + " new entries during merge (Missing/Invalid ID). Check log for details.");
         }
         return master;
     }
