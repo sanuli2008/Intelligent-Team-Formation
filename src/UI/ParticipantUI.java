@@ -143,9 +143,9 @@ public class ParticipantUI {
         //sq number 1.11 in register use case of participant
         int q5 = askQ("Q5: I like making quick decisions and adapting in dynamic situations.");
 
-        //sq number 1.12 in register use case of participant
+        //sq number 1.12  and 1.12.1 in register use case of participant
         int score = classifier.computeScore(q1,q2,q3,q4,q5);
-        //sq number 1.13 in register use case of participant
+        //sq number 1.13 and 1.13.1 in register use case of participant
         String type = classifier.classify(score);
 
         // Reject registration for users with undefined personality type (Score < 50)

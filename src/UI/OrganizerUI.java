@@ -79,11 +79,11 @@ public class OrganizerUI {
             return;
         }
 
-        //sq number 1.1 in upload participant data use case of organizer
+        //sq number 1.1 and 1.1.2 in upload participant data use case of organizer
         masterMap = fm.readMasterMap();
 
         try {
-            //sq number 1.2 in upload participant data use case of organizer
+            //sq number 1.2 and 1.2.3 in upload participant data use case of organizer
             //to prevent uploading already uploaded file
             List<Participant> validCandidates = fm.importCandidates(path, masterMap);
 

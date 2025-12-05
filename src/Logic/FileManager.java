@@ -287,6 +287,7 @@ public class FileManager {
 
             for (Team t : teams) {
                 for (Participant p : t.getMembers()) {
+                    //sq number 1.6.1 in export formed teams use case of organizer
                     bw.write(String.join(",",
                             "Team-" + t.getTeamID(),
                             safe(p.getId()), safe(p.getName()), safe(p.getEmail()), safe(p.getGame()),
